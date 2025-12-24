@@ -30,7 +30,9 @@ class AIService:
             "gemini-1.5-flash",
             "gemini-1.5-pro",
             "gemini-2.0-flash-exp", 
-            "gemini-pro"
+            "gemini-pro",
+            "gemma-3-4b-it",
+            "gemma-2-9b-it"
         ]
         
         print("Connecting to Google AI...")
@@ -133,40 +135,79 @@ class AIService:
         instr = f"ACT AS A PROFESSIONAL LINGUIST. Category: {category}. Context: {explanation}"
         return self._execute_translation(text, src, tgt, instr)
 
-    # --- CORE LOGIC (UPDATED FOR DUAL PANELS) ---
+    # --- CORE LOGIC (STRICTLY FINE-TUNED) ---
 
     def _execute_translation(self, text, src, tgt, custom_instruction):
         # Logic to skip synonyms for long text
         is_long = len(text.split()) > 30
-        synonym_instruction = "Return empty lists [] for synonyms/antonyms." if is_long else "Provide 3 synonyms and 3 antonyms."
+        syn_instruction = "Return empty lists [] for synonyms/antonyms." if is_long else "Provide 3 synonyms and 3 antonyms."
+
+        # DYNAMIC LANGUAGE RULES
+        src_rule = ""
+        if src == "Urdu":
+            src_rule = """
+            - Source is URDU. 
+            - 'source_analysis' fields (structure, grammar, correction) MUST be in URDU SCRIPT.
+            - Do NOT use English grammatical terms (e.g. don't write 'Verb', write 'فعل').
+            - Synonyms and Antonyms MUST be Urdu words.
+            """
+        else:
+            src_rule = f"""
+            - Source is {src}. 
+            - 'source_analysis' fields should be in English.
+            - Synonyms and Antonyms MUST be in {src}.
+            """
+
+        tgt_rule = ""
+        if tgt == "Urdu":
+            tgt_rule = """
+            - Target is URDU.
+            - 'target_analysis' fields (structure, grammar) MUST be in URDU SCRIPT.
+            - Do NOT use English grammatical terms (e.g. don't write 'Subject', write 'فاعل').
+            - Synonyms and Antonyms MUST be Urdu words.
+            """
+        else:
+            tgt_rule = f"""
+            - Target is {tgt}.
+            - 'target_analysis' fields should be in English.
+            - Synonyms and Antonyms MUST be in {tgt}.
+            """
 
         prompt = f"""
         {custom_instruction}
         
         Task: 
         1. Translate the Input Text from {src} to {tgt}.
+           - **Translation Rule:** Translate naturally as a native speaker would say it.
+           - **Avoid Definitions:** Do NOT define the sentence (e.g., "This means..."). Just translate it.
+           - **Example:** If input is "My name is Ali", output "میرا نام علی ہے" (NOT "اسے میرا نام کہا جاتا ہے").
+
         2. Analyze the SOURCE text ({src}).
         3. Analyze the TARGET text ({tgt}).
 
         Input Text: "{text}"
         
-        {synonym_instruction}
+        {syn_instruction}
+        
+        STRICT RULES:
+        {src_rule}
+        {tgt_rule}
         
         Strictly output this NESTED JSON structure:
         {{
-            "translation": "The translated text",
+            "translation": "The direct translated text",
             "source_analysis": {{
-                "structure": "Brief sentence structure (e.g. SVO)",
-                "grammar": "Key grammar details",
+                "structure": "Analysis of structure",
+                "grammar": "Analysis of grammar",
                 "correction": "Corrected text or 'No errors found'",
-                "synonyms": ["list", "of", "words"],
-                "antonyms": ["list", "of", "words"]
+                "synonyms": ["List of synonyms in {src} language"],
+                "antonyms": ["List of antonyms in {src} language"]
             }},
             "target_analysis": {{
-                "structure": "Brief structure of translation",
-                "grammar": "Key grammar details of translation",
-                "synonyms": ["list", "of", "words"],
-                "antonyms": ["list", "of", "words"]
+                "structure": "Analysis of structure",
+                "grammar": "Analysis of grammar",
+                "synonyms": ["List of synonyms in {tgt} language"],
+                "antonyms": ["List of antonyms in {tgt} language"]
             }}
         }}
         """

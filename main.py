@@ -1,5 +1,6 @@
 import sys
 import pyperclip
+import re
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QHBoxLayout, QTextEdit, QPushButton, QComboBox, 
                                QLabel, QFrame, QProgressBar, QMessageBox, QScrollArea)
@@ -16,7 +17,6 @@ class AnalysisPanel(QScrollArea):
         super().__init__()
         self.setWidgetResizable(True)
         self.setMaximumHeight(250)
-        # Modern Card Style (Matches your existing aesthetics)
         self.setStyleSheet("""
             QScrollArea { background-color: #FFFFFF; border: 1px solid #DADCE0; border-radius: 8px; }
             QScrollBar:vertical { border: none; background: #F1F3F4; width: 8px; border-radius: 4px; }
@@ -28,7 +28,7 @@ class AnalysisPanel(QScrollArea):
         self.content_widget.setStyleSheet("background-color: transparent;")
         self.layout = QVBoxLayout(self.content_widget)
         self.layout.setContentsMargins(15, 15, 15, 15)
-        self.layout.setSpacing(8)
+        self.layout.setSpacing(12) # Slightly increased spacing
 
         # Title Label
         self.lbl_title = QLabel(title)
@@ -37,15 +37,14 @@ class AnalysisPanel(QScrollArea):
 
         # Content Labels (Stored in a dict for easy updating)
         self.labels = {}
-        # We create labels for all potential data points
         for key in ["Structure", "Grammar", "Synonyms", "Antonyms", "Correction"]:
             lbl = QLabel(f"{key}: -")
             lbl.setWordWrap(True)
-            lbl.setStyleSheet("font-size: 13px; color: #3C4043; border: none;")
+            # Default style
+            lbl.setStyleSheet("font-size: 14px; color: #3C4043; border: none; line-height: 1.4;")
             self.layout.addWidget(lbl)
             self.labels[key] = lbl
 
-        # Correction is initially hidden (usually only for source)
         self.labels["Correction"].hide() 
 
         self.layout.addStretch()
@@ -53,32 +52,56 @@ class AnalysisPanel(QScrollArea):
 
     def update_data(self, data, is_source=False):
         """
-        Updates the labels based on the dictionary received from Backend.
+        Updates labels and applies RTL alignment if Urdu is detected.
         """
-        # Helper to format lists nicely
         def fmt_list(key):
             val = data.get(key, [])
-            return ", ".join(val) if val else "<i>Hidden for Paragraph</i>"
+            return ", ".join(val) if val else "-"
 
-        # Update standard fields
-        self.labels["Structure"].setText(f"<b>Structure:</b> {data.get('structure', '-')}")
-        self.labels["Grammar"].setText(f"<b>Grammar:</b> {data.get('grammar', '-')}")
-        self.labels["Synonyms"].setText(f"<b>Synonyms:</b> {fmt_list('synonyms')}")
-        self.labels["Antonyms"].setText(f"<b>Antonyms:</b> {fmt_list('antonyms')}")
+        # Helper to check for Urdu characters
+        def is_urdu(text):
+            # Range for Arabic/Urdu unicode
+            return bool(re.search(r'[\u0600-\u06FF]', str(text)))
 
-        # Logic for Grammar Correction (Only show if Source and if error exists)
+        # Update Text
+        raw_struct = data.get('structure', '-')
+        raw_grammar = data.get('grammar', '-')
+        raw_syns = fmt_list('synonyms')
+        raw_ants = fmt_list('antonyms')
+
+        self.labels["Structure"].setText(f"<b>Structure:</b> {raw_struct}")
+        self.labels["Grammar"].setText(f"<b>Grammar:</b> {raw_grammar}")
+        self.labels["Synonyms"].setText(f"<b>Synonyms:</b> {raw_syns}")
+        self.labels["Antonyms"].setText(f"<b>Antonyms:</b> {raw_ants}")
+
+        # Check Correction
         if is_source:
             corr = data.get("correction", "No data")
-            if corr and corr != "No errors found":
+            if corr and corr != "No errors found" and corr != "Correct":
                 self.labels["Correction"].show()
                 self.labels["Correction"].setText(f"<b>Correction:</b> {corr}")
-                self.labels["Correction"].setStyleSheet("color: #D93025; font-size: 13px;") # Red for error
+                self.labels["Correction"].setStyleSheet("color: #D93025; font-size: 14px;") 
+                if is_urdu(corr): self.labels["Correction"].setAlignment(Qt.AlignRight)
+                else: self.labels["Correction"].setAlignment(Qt.AlignLeft)
             else:
                 self.labels["Correction"].show()
                 self.labels["Correction"].setText("<b>Correction:</b> Perfect! ✅")
-                self.labels["Correction"].setStyleSheet("color: #188038; font-size: 13px;") # Green for good
+                self.labels["Correction"].setStyleSheet("color: #188038; font-size: 14px;")
+                self.labels["Correction"].setAlignment(Qt.AlignLeft)
         else:
             self.labels["Correction"].hide()
+
+        # Apply RTL Alignment if Urdu detected in content
+        for key, lbl in self.labels.items():
+            if key == "Correction": continue 
+            text_content = lbl.text()
+            if is_urdu(text_content):
+                lbl.setAlignment(Qt.AlignRight)
+                # Ensure font supports Urdu well if installed, else fallback
+                lbl.setFont(QFont("Noto Nastaliq Urdu", 11)) 
+            else:
+                lbl.setAlignment(Qt.AlignLeft)
+                lbl.setFont(QFont("Segoe UI", 10))
 
 
 # --- MAIN APP ---
@@ -90,7 +113,6 @@ class GeminiTranslatorApp(QMainWindow):
         self.setWindowTitle("Gemini AI Translator")
         self.resize(1100, 900)
         
-        # Load Styles
         try:
             with open("styles.qss", "r") as f:
                 self.setStyleSheet(f.read())
@@ -106,9 +128,7 @@ class GeminiTranslatorApp(QMainWindow):
         main_layout.setContentsMargins(30, 30, 30, 30)
         main_layout.setSpacing(20)
 
-        # =======================================================
-        # 1. HEADER (Language Selection & Swap)
-        # =======================================================
+        # 1. HEADER
         header_layout = QHBoxLayout()
         header_layout.setSpacing(15)
 
@@ -141,70 +161,64 @@ class GeminiTranslatorApp(QMainWindow):
         header_layout.addStretch()
         main_layout.addLayout(header_layout)
 
-        # =======================================================
-        # 2. MAIN CONTENT (Side-by-Side Input/Output Cards)
-        # =======================================================
+        # 2. INPUT/OUTPUT CARDS
         content_layout = QHBoxLayout()
         content_layout.setSpacing(20)
 
-        # --- LEFT CARD (INPUT) ---
+        # Left Card
         input_card = QFrame()
         input_card.setStyleSheet("QFrame { background-color: #FFFFFF; border: 1px solid #DADCE0; border-radius: 8px; }")
         input_card_layout = QVBoxLayout(input_card)
         input_card_layout.setContentsMargins(0, 0, 0, 0)
-        input_card_layout.setSpacing(0)
-
+        
         self.input_text = QTextEdit()
         self.input_text.setPlaceholderText("Enter text here...")
         self.input_text.setFrameShape(QFrame.NoFrame)
         self.input_text.setStyleSheet("border: none; padding: 15px; font-size: 16px; background-color: transparent;")
-
-        # Input Toolbar
+        
         input_toolbar = QFrame()
-        input_toolbar.setStyleSheet("QFrame { border-top: 1px solid #F1F3F4; background-color: transparent; border-left: none; border-right: none; border-bottom: none;}")
-        input_toolbar_layout = QHBoxLayout(input_toolbar)
-        input_toolbar_layout.setContentsMargins(10, 5, 10, 5)
-
+        input_toolbar.setStyleSheet("QFrame { border-top: 1px solid #F1F3F4; background-color: transparent; }")
+        it_layout = QHBoxLayout(input_toolbar)
+        it_layout.setContentsMargins(10, 5, 10, 5)
+        
         self.btn_mic = self.create_icon_btn("🎤", "Voice Input", self.start_voice_input)
         self.btn_input_speak = self.create_icon_btn("🔊", "Listen", self.speak_input)
         self.btn_paste = self.create_icon_btn("📋", "Paste", self.paste_from_clipboard)
         self.btn_analyze_word = self.create_icon_btn("🔍", "Define Word", self.analyze_selected_word)
         
-        input_toolbar_layout.addWidget(self.btn_mic)
-        input_toolbar_layout.addWidget(self.btn_input_speak)
-        input_toolbar_layout.addStretch()
-        input_toolbar_layout.addWidget(self.btn_analyze_word)
-        input_toolbar_layout.addWidget(self.btn_paste)
-
+        it_layout.addWidget(self.btn_mic)
+        it_layout.addWidget(self.btn_input_speak)
+        it_layout.addStretch()
+        it_layout.addWidget(self.btn_analyze_word)
+        it_layout.addWidget(self.btn_paste)
+        
         input_card_layout.addWidget(self.input_text)
         input_card_layout.addWidget(input_toolbar)
 
-        # --- RIGHT CARD (OUTPUT) ---
+        # Right Card
         output_card = QFrame()
         output_card.setStyleSheet("QFrame { background-color: #F8F9FA; border: 1px solid #DADCE0; border-radius: 8px; }")
         output_card_layout = QVBoxLayout(output_card)
         output_card_layout.setContentsMargins(0, 0, 0, 0)
-        output_card_layout.setSpacing(0)
-
+        
         self.output_text = QTextEdit()
         self.output_text.setPlaceholderText("Translation...")
         self.output_text.setReadOnly(True)
         self.output_text.setFrameShape(QFrame.NoFrame)
         self.output_text.setStyleSheet("border: none; padding: 15px; font-size: 16px; background-color: transparent;")
-
-        # Output Toolbar
+        
         output_toolbar = QFrame()
-        output_toolbar.setStyleSheet("QFrame { border-top: 1px solid #E0E0E0; background-color: transparent; border-left: none; border-right: none; border-bottom: none; }")
-        output_toolbar_layout = QHBoxLayout(output_toolbar)
-        output_toolbar_layout.setContentsMargins(10, 5, 10, 5)
-
+        output_toolbar.setStyleSheet("QFrame { border-top: 1px solid #E0E0E0; background-color: transparent; }")
+        ot_layout = QHBoxLayout(output_toolbar)
+        ot_layout.setContentsMargins(10, 5, 10, 5)
+        
         self.btn_output_speak = self.create_icon_btn("🔊", "Listen", self.speak_result)
         self.btn_output_copy = self.create_icon_btn("📄", "Copy Result", self.copy_output_result)
-
-        output_toolbar_layout.addWidget(self.btn_output_speak)
-        output_toolbar_layout.addStretch()
-        output_toolbar_layout.addWidget(self.btn_output_copy)
-
+        
+        ot_layout.addWidget(self.btn_output_speak)
+        ot_layout.addStretch()
+        ot_layout.addWidget(self.btn_output_copy)
+        
         output_card_layout.addWidget(self.output_text)
         output_card_layout.addWidget(output_toolbar)
 
@@ -212,9 +226,7 @@ class GeminiTranslatorApp(QMainWindow):
         content_layout.addWidget(output_card)
         main_layout.addLayout(content_layout)
 
-        # =======================================================
         # 3. TRANSLATE BUTTON
-        # =======================================================
         btn_container = QHBoxLayout()
         self.btn_translate = QPushButton("Translate")
         self.btn_translate.setCursor(Qt.PointingHandCursor)
@@ -238,24 +250,17 @@ class GeminiTranslatorApp(QMainWindow):
         self.loader.hide()
         main_layout.addWidget(self.loader)
 
-        # =======================================================
-        # 4. DUAL SMART ANALYSIS (Side-by-Side Panels)
-        # =======================================================
+        # 4. DUAL SMART ANALYSIS
         analysis_container = QHBoxLayout()
         analysis_container.setSpacing(20)
 
-        # Left Analysis Panel (Source)
         self.left_analysis = AnalysisPanel("Source Analysis")
-        
-        # Right Analysis Panel (Target)
         self.right_analysis = AnalysisPanel("Target Analysis")
 
         analysis_container.addWidget(self.left_analysis)
         analysis_container.addWidget(self.right_analysis)
-        
         main_layout.addLayout(analysis_container)
 
-    # --- Helper to create consistent icon buttons ---
     def create_icon_btn(self, text, tooltip, callback):
         btn = QPushButton(text)
         btn.setToolTip(tooltip)
@@ -268,29 +273,27 @@ class GeminiTranslatorApp(QMainWindow):
     # --- Logic ---
 
     def swap_languages(self):
-        # 1. Capture BOTH current states before making any changes
+        # 1. Capture BOTH current states
         original_source = self.combo_source.currentText()
-        original_target = self.combo_target.currentText()
+        # original_target is not needed for setting, we just want to set source = current target
+        tgt_txt = self.combo_target.currentText()
         
-        # 2. Perform the Swap
-        self.combo_source.setCurrentText(original_target)
+        # 2. Perform Swap
+        self.combo_source.setCurrentText(tgt_txt)
         
-        # Handle "Auto Detect" case (Target list usually doesn't have Auto Detect)
         if original_source == "Auto Detect":
-            self.combo_target.setCurrentText("English") # Fallback default
+            self.combo_target.setCurrentText("English")
         else:
             self.combo_target.setCurrentText(original_source)
-        
-        # 3. Swap Text Content (Move Output -> Input)
+            
+        # 3. Swap Text Content
         current_output = self.output_text.toPlainText()
-        
         if current_output:
             self.input_text.setText(current_output)
             self.output_text.clear()
-            
-            # Reset titles immediately so UI reflects the swap
-            self.left_analysis.lbl_title.setText(f"{original_target} Analysis")
+            self.left_analysis.lbl_title.setText(f"{tgt_txt} Analysis")
             self.right_analysis.lbl_title.setText(f"{original_source} Analysis")
+
     def start_translation(self):
         text = self.input_text.toPlainText()
         if not text: return
@@ -301,7 +304,6 @@ class GeminiTranslatorApp(QMainWindow):
         src_lang = self.combo_source.currentText()
         tgt_lang = self.combo_target.currentText()
         
-        # Update Titles to be clear
         self.left_analysis.lbl_title.setText(f"{src_lang} Analysis")
         self.right_analysis.lbl_title.setText(f"{tgt_lang} Analysis")
         
@@ -314,11 +316,9 @@ class GeminiTranslatorApp(QMainWindow):
         self.set_loading(False)
         self.output_text.setText(result.get("translation", ""))
         
-        # 1. Update Left Panel (Source) using data from 'source_analysis'
         src_data = result.get("source_analysis", {})
         self.left_analysis.update_data(src_data, is_source=True)
 
-        # 2. Update Right Panel (Target) using data from 'target_analysis'
         tgt_data = result.get("target_analysis", {})
         self.right_analysis.update_data(tgt_data, is_source=False)
 
@@ -340,8 +340,6 @@ class GeminiTranslatorApp(QMainWindow):
 
     def handle_word_result(self, result):
         self.set_loading(False)
-        # Temporarily use the Left Panel to show Word Definitions
-        # We manually construct a dict to fit the update_data format
         data = {
             "structure": f"Definition: {result.get('definition', '-')}",
             "grammar": f"Part of Speech: {result.get('part_of_speech', '-')}",
