@@ -1,0 +1,93 @@
+/* Global Reset */
+QWidget {
+    font-family: 'Segoe UI', 'Roboto', sans-serif;
+    font-size: 14px;
+    color: #202124;
+    background-color: #FFFFFF;
+}
+
+/* Main Window Background */
+QMainWindow {
+    background-color: #F8F9FA;
+}
+
+/* Input/Output Text Areas */
+QTextEdit {
+    border: 1px solid #DADCE0;
+    border-radius: 8px;
+    background-color: #FFFFFF;
+    padding: 12px;
+    selection-background-color: #D2E3FC;
+    font-size: 16px;
+}
+
+QTextEdit:focus {
+    border: 2px solid #1A73E8;
+}
+
+/* The "Result" area usually looks slightly read-only/different */
+QTextEdit#ResultArea {
+    background-color: #F1F3F4;
+    border: none;
+}
+
+/* Combo Boxes (Language Selectors) */
+QComboBox {
+    border: none;
+    padding: 5px;
+    font-weight: bold;
+    color: #1A73E8;
+    background-color: transparent;
+}
+QComboBox::drop-down {
+    border: none;
+}
+QComboBox:hover {
+    background-color: #E8F0FE;
+    border-radius: 4px;
+}
+
+/* Primary Button (Translate) */
+QPushButton#PrimaryBtn {
+    background-color: #1A73E8;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 24px;
+    font-weight: bold;
+    font-size: 14px;
+}
+QPushButton#PrimaryBtn:hover {
+    background-color: #1765CC;
+    border: 1px solid transparent;
+}
+QPushButton#PrimaryBtn:pressed {
+    background-color: #1659B2;
+}
+QPushButton#PrimaryBtn:disabled {
+    background-color: #AECBFA;
+}
+
+/* Icon Buttons (Mic, Speaker, Copy) */
+QPushButton#IconBtn {
+    background-color: transparent;
+    border-radius: 20px; /* Circular */
+    padding: 8px;
+    border: 1px solid #DADCE0;
+}
+QPushButton#IconBtn:hover {
+    background-color: #F1F3F4;
+}
+
+/* Labels */
+QLabel#InfoLabel {
+    color: #5F6368;
+    font-size: 12px;
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+QLabel#CorrectionText {
+    color: #D93025; /* Google Error Red */
+    font-style: italic;
+}
