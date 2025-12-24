@@ -240,6 +240,146 @@ class AIService:
         except Exception as e:
             return {"error": str(e)}
 
+    # --- Bilingual Word Analysis and Translation ---
+    def analyze_and_translate_word(self, word, source_lang, target_lang):
+        """
+        Analyze word in source language and get translation in target language
+        Returns bilingual analysis for both panels
+        """
+        if not self.model: 
+            return {"error": "AI Model not connected."}
+        
+        # Determine language settings
+        is_source_urdu = (source_lang == "Urdu")
+        is_target_urdu = (target_lang == "Urdu")
+        
+        # Source language rules
+        source_instr = ""
+        if is_source_urdu:
+            source_instr = f"""
+            FOR SOURCE ANALYSIS (URDU):
+            1. Definition: Provide definition in URDU SCRIPT (e.g., "پڑھنے کا عمل")
+            2. Part of speech: Use URDU terms (اسم for Noun, فعل for Verb, صفت for Adjective, etc.)
+            3. Synonyms: Provide 3-5 URDU words
+            4. Antonyms: Provide 3-5 URDU words
+            5. ALL text in source_analysis MUST be in URDU SCRIPT, NO English mixed
+            """
+        else:
+            source_instr = f"""
+            FOR SOURCE ANALYSIS ({source_lang}):
+            1. Definition: Provide definition in English
+            2. Part of speech: Use English terms (Noun, Verb, Adjective, etc.)
+            3. Synonyms: Provide 3-5 words in {source_lang}
+            4. Antonyms: Provide 3-5 words in {source_lang}
+            """
+        
+        # Target language rules  
+        target_instr = ""
+        if is_target_urdu:
+            target_instr = f"""
+            FOR TARGET ANALYSIS (URDU):
+            1. Translation: Provide natural translation in URDU SCRIPT
+            2. Definition: Provide definition in URDU SCRIPT
+            3. Part of speech: Use URDU terms (اسم for Noun, فعل for Verb, etc.)
+            4. Synonyms: Provide 3-5 URDU words
+            5. Antonyms: Provide 3-5 URDU words
+            6. ALL text in target_analysis MUST be in URDU SCRIPT, NO English mixed
+            """
+        else:
+            target_instr = f"""
+            FOR TARGET ANALYSIS ({target_lang}):
+            1. Translation: Provide natural translation in {target_lang}
+            2. Definition: Provide definition in English
+            3. Part of speech: Use English terms (Noun, Verb, Adjective, etc.)
+            4. Synonyms: Provide 3-5 words in {target_lang}
+            5. Antonyms: Provide 3-5 words in {target_lang}
+            """
+        
+        # Common part of speech mappings for consistency
+        pos_mappings = """
+        COMMON PART OF SPEECH MAPPINGS:
+        - Noun = اسم
+        - Verb = فعل  
+        - Adjective = صفت
+        - Adverb = حال
+        - Pronoun = ضمیر
+        - Preposition = حرف جار
+        - Conjunction = حرف عطف
+        - Interjection = حرف ندا
+        """
+        
+        prompt = f"""
+        ACT AS A BILINGUAL LINGUISTIC EXPERT.
+        
+        Task: Analyze the word "{word}" in {source_lang} and provide its translation and analysis in {target_lang}.
+        
+        {pos_mappings}
+        
+        IMPORTANT INSTRUCTIONS:
+        {source_instr}
+        {target_instr}
+        
+        CRITICAL: Do NOT mix languages within the same section. 
+        If a section is supposed to be in Urdu, use ONLY Urdu script.
+        If a section is supposed to be in English, use ONLY English.
+        
+        Provide comprehensive bilingual analysis:
+        
+        1. For SOURCE language ({source_lang}):
+           - Definition (follow language rules above)
+           - Part of speech (use appropriate language terms)
+           - 3-5 Synonyms (in appropriate language)
+           - 3-5 Antonyms (in appropriate language)
+        
+        2. For TARGET language ({target_lang}):
+           - Natural translation of the word
+           - Definition (follow language rules above)
+           - Part of speech (use appropriate language terms)
+           - 3-5 Synonyms (in appropriate language)
+           - 3-5 Antonyms (in appropriate language)
+        
+        Strictly output this JSON format:
+        {{
+            "source_analysis": {{
+                "word": "{word}",
+                "language": "{source_lang}",
+                "definition": "definition",
+                "part_of_speech": "part of speech",
+                "synonyms": ["syn1", "syn2", "syn3"],
+                "antonyms": ["ant1", "ant2", "ant3"]
+            }},
+            "target_analysis": {{
+                "translation": "natural translation",
+                "language": "{target_lang}",
+                "definition": "definition",
+                "part_of_speech": "part of speech",
+                "synonyms": ["syn1", "syn2", "syn3"],
+                "antonyms": ["ant1", "ant2", "ant3"]
+            }}
+        }}
+        
+        REMEMBER: No mixed language content. Each section must be purely in its assigned language.
+        """
+        
+        try:
+            response = self.retry_api_call(prompt)
+            result = self._parse_json(response.text)
+            
+            # Ensure we have proper structure
+            if "source_analysis" not in result:
+                result["source_analysis"] = {}
+            if "target_analysis" not in result:
+                result["target_analysis"] = {}
+            
+            # Add translation at root level for convenience
+            if "target_analysis" in result and "translation" in result["target_analysis"]:
+                result["translation"] = result["target_analysis"]["translation"]
+            
+            return result
+        except Exception as e:
+            print(f"Error in bilingual word analysis: {e}")
+            return {"error": str(e)}
+
     # --- Audio Functions ---
     def text_to_speech(self, text, language_name):
         lang_map = {

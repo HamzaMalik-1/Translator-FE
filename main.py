@@ -9,7 +9,7 @@ from PySide6.QtGui import QIcon, QFont
 
 # Import our modules
 from backend import AIService
-from worker import TranslationWorker, AudioWorker, TTSWorker, WordAnalysisWorker
+from worker import TranslationWorker, AudioWorker, TTSWorker, WordAnalysisWorker, DirectBilingualWordWorker
 
 # --- HELPER CLASS: Analysis Panel (Reusable Card) ---
 class AnalysisPanel(QScrollArea):
@@ -54,9 +54,10 @@ class AnalysisPanel(QScrollArea):
         self.layout.addStretch()
         self.setWidget(self.content_widget)
 
-    def update_data(self, data, is_source=False):
+    def update_data(self, data, is_source=False, force_language=None):
         """
         Updates labels and applies RTL alignment AND Urdu Label Translation.
+        force_language: Optional parameter to force language detection ('urdu' or 'english')
         """
         def fmt_list(key):
             val = data.get(key, [])
@@ -82,9 +83,15 @@ class AnalysisPanel(QScrollArea):
         raw_ants = fmt_list('antonyms')
         raw_corr = data.get("correction", "No data")
 
-        # 2. Detect Language (Check structure field to decide panel language)
-        # If the content is Urdu, we switch the Headers to Urdu too.
-        is_content_urdu = is_urdu(raw_struct) or is_urdu(raw_grammar)
+        # 2. Detect Language 
+        # Use force_language if provided, otherwise auto-detect
+        if force_language == 'urdu':
+            is_content_urdu = True
+        elif force_language == 'english':
+            is_content_urdu = False
+        else:
+            # Auto-detect based on content
+            is_content_urdu = is_urdu(raw_struct) or is_urdu(raw_grammar)
 
         # 3. Helper to format the final string (<b>Label:</b> Value)
         def set_label_text(key, value, is_urdu_mode):
@@ -102,7 +109,7 @@ class AnalysisPanel(QScrollArea):
             if raw_corr and raw_corr != "No errors found" and raw_corr != "Correct":
                 self.labels["Correction"].show()
                 # Check if correction itself is Urdu
-                corr_is_urdu = is_urdu(raw_corr)
+                corr_is_urdu = is_urdu(raw_corr) if not force_language else (force_language == 'urdu')
                 label_title = URDU_LABELS["Correction"] if corr_is_urdu else "Correction"
                 
                 self.labels["Correction"].setText(f"<b>{label_title}:</b> {raw_corr}")
@@ -217,7 +224,7 @@ class GeminiTranslatorApp(QMainWindow):
         self.btn_mic = self.create_icon_btn("🎤", "Voice Input", self.start_voice_input)
         self.btn_input_speak = self.create_icon_btn("🔊", "Listen", self.speak_input)
         self.btn_paste = self.create_icon_btn("📋", "Paste", self.paste_from_clipboard)
-        self.btn_analyze_word = self.create_icon_btn("🔍", "Define Word", self.analyze_selected_word)
+        self.btn_analyze_word = self.create_icon_btn("🔍", "Define Word", self.analyze_selected_word_bilingual)
         
         it_layout.addWidget(self.btn_mic)
         it_layout.addWidget(self.btn_input_speak)
@@ -351,13 +358,118 @@ class GeminiTranslatorApp(QMainWindow):
         tgt_data = result.get("target_analysis", {})
         self.right_analysis.update_data(tgt_data, is_source=False)
 
-    def analyze_selected_word(self):
+    def analyze_selected_word_bilingual(self):
+        """
+        NEW: Bilingual word analysis - shows analysis in both panels
+        """
         cursor = self.input_text.textCursor()
         selected_text = cursor.selectedText().strip()
         
         if not selected_text or len(selected_text.split()) > 3:
-             QMessageBox.warning(self, "Selection Error", "Please select exactly one word.")
-             return
+            QMessageBox.warning(self, "Selection Error", "Please select exactly one word (1-3 words maximum).")
+            return
+
+        self.set_loading(True)
+        
+        # Get current languages
+        source_lang = self.combo_source.currentText()
+        target_lang = self.combo_target.currentText()
+        
+        # Update panel titles to show context
+        self.left_analysis.lbl_title.setText(f"Word Analysis ({source_lang}): '{selected_text}'")
+        self.right_analysis.lbl_title.setText(f"Word Translation ({target_lang})")
+        
+        # Use the new bilingual word worker
+        self.word_worker = DirectBilingualWordWorker(
+            self.ai_service, 
+            selected_text,
+            source_lang,
+            target_lang
+        )
+        self.word_worker.finished.connect(self.handle_bilingual_word_result)
+        self.word_worker.error.connect(self.handle_error)
+        self.word_worker.start()
+
+    def handle_bilingual_word_result(self, result):
+        """
+        NEW: Handle bilingual word analysis result for both panels
+        """
+        self.set_loading(False)
+        
+        # Get source analysis data
+        source_data = result.get("source_analysis", {})
+        # Get target analysis data
+        target_data = result.get("target_analysis", {})
+        # Get translation
+        translation = result.get("translation", target_data.get("translation", ""))
+        
+        # Display translation in output area
+        if translation:
+            self.output_text.setText(translation)
+        
+        # Get current languages
+        source_lang = self.combo_source.currentText()
+        target_lang = self.combo_target.currentText()
+        
+        # Prepare data for LEFT panel (Source Language Analysis)
+        # Format the data appropriately based on source language
+        if source_lang == "Urdu":
+            left_display_data = {
+                "structure": f"لفظ: {source_data.get('word', '')}",
+                "grammar": f"قسم کلام: {source_data.get('part_of_speech', '-')}",
+                "synonyms": source_data.get("synonyms", []),
+                "antonyms": source_data.get("antonyms", []),
+                "correction": f"تعریف: {source_data.get('definition', '-')}"
+            }
+            left_force_language = 'urdu'
+        else:
+            left_display_data = {
+                "structure": f"Word: {source_data.get('word', '')}",
+                "grammar": f"Part of Speech: {source_data.get('part_of_speech', '-')}",
+                "synonyms": source_data.get("synonyms", []),
+                "antonyms": source_data.get("antonyms", []),
+                "correction": f"Definition: {source_data.get('definition', '-')}"
+            }
+            left_force_language = 'english'
+        
+        # Update left panel with forced language
+        self.left_analysis.update_data(left_display_data, is_source=False, force_language=left_force_language)
+        
+        # Prepare data for RIGHT panel (Target Language Translation & Analysis)
+        # Format the data appropriately based on target language
+        if target_lang == "Urdu":
+            right_display_data = {
+                "structure": f"ترجمہ: {translation}",
+                "grammar": f"قسم کلام: {target_data.get('part_of_speech', '-')}",
+                "synonyms": target_data.get("synonyms", []),
+                "antonyms": target_data.get("antonyms", []),
+                "correction": f"تعریف: {target_data.get('definition', '-')}"
+            }
+            right_force_language = 'urdu'
+        else:
+            right_display_data = {
+                "structure": f"Translation: {translation}",
+                "grammar": f"Part of Speech: {target_data.get('part_of_speech', '-')}",
+                "synonyms": target_data.get("synonyms", []),
+                "antonyms": target_data.get("antonyms", []),
+                "correction": f"Definition: {target_data.get('definition', '-')}"
+            }
+            right_force_language = 'english'
+        
+        # Update right panel with forced language
+        self.right_analysis.update_data(right_display_data, is_source=False, force_language=right_force_language)
+
+    # OLD method - kept for backward compatibility
+    def analyze_selected_word(self):
+        """
+        OLD: Single language word analysis (kept for compatibility)
+        """
+        cursor = self.input_text.textCursor()
+        selected_text = cursor.selectedText().strip()
+        
+        if not selected_text or len(selected_text.split()) > 3:
+            QMessageBox.warning(self, "Selection Error", "Please select exactly one word.")
+            return
 
         self.set_loading(True)
         self.left_analysis.lbl_title.setText(f"Word Analysis: '{selected_text}'")
@@ -368,6 +480,9 @@ class GeminiTranslatorApp(QMainWindow):
         self.word_worker.start()
 
     def handle_word_result(self, result):
+        """
+        OLD: Handle single language word result
+        """
         self.set_loading(False)
         data = {
             "structure": f"Definition: {result.get('definition', '-')}",
@@ -376,6 +491,8 @@ class GeminiTranslatorApp(QMainWindow):
             "antonyms": result.get("antonyms", []),
             "correction": "" 
         }
+        # Clear right panel when using old method
+        self.right_analysis.update_data({}, is_source=False)
         self.left_analysis.update_data(data, is_source=False)
 
     def handle_error(self, error_msg):
