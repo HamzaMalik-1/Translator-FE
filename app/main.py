@@ -1,4 +1,5 @@
 import sys
+import os
 import pyperclip
 import re
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
@@ -7,9 +8,12 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QFont
 
-# Import our modules
-from backend import AIService
-from worker import TranslationWorker, AudioWorker, TTSWorker, WordAnalysisWorker, DirectBilingualWordWorker
+# Add the src directory to Python path so we can import from it
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+# Import our modules - Now relative to src directory
+from backend.backend import AIService
+from worker.worker import TranslationWorker, AudioWorker, TTSWorker, WordAnalysisWorker, DirectBilingualWordWorker
 
 # --- HELPER CLASS: Analysis Panel (Reusable Card) ---
 class AnalysisPanel(QScrollArea):
@@ -153,11 +157,19 @@ class GeminiTranslatorApp(QMainWindow):
         self.setWindowTitle("Gemini AI Translator")
         self.resize(1100, 900)
         
+        # Update the path for styles.qss since it's at root level
+        styles_path = os.path.join(os.path.dirname(__file__), '..', 'styles.qss')
         try:
-            with open("styles.qss", "r") as f:
+            with open(styles_path, "r") as f:
                 self.setStyleSheet(f.read())
         except FileNotFoundError:
-            pass
+            # Fallback to trying the current directory
+            try:
+                with open("styles.qss", "r") as f:
+                    self.setStyleSheet(f.read())
+            except FileNotFoundError:
+                print("Warning: Could not find styles.qss file")
+                pass
 
         self.setup_ui()
         
@@ -173,7 +185,7 @@ class GeminiTranslatorApp(QMainWindow):
         header_layout.setSpacing(15)
 
         self.combo_source = QComboBox()
-        self.combo_source.addItems(["Auto Detect", "English", "Urdu", "Spanish", "French", "German", "Chinese", "Arabic"])
+        self.combo_source.addItems(["English", "Urdu"])
         self.combo_source.setFixedWidth(220)
         self.combo_source.setCursor(Qt.PointingHandCursor)
         self.combo_source.setStyleSheet("padding: 8px; font-size: 14px;")
@@ -188,7 +200,7 @@ class GeminiTranslatorApp(QMainWindow):
         """)
 
         self.combo_target = QComboBox()
-        self.combo_target.addItems(["English", "Urdu", "Spanish", "French", "German", "Chinese", "Arabic"])
+        self.combo_target.addItems(["English", "Urdu"])
         self.combo_target.setCurrentText("Urdu")
         self.combo_target.setFixedWidth(220)
         self.combo_target.setCursor(Qt.PointingHandCursor)
@@ -550,8 +562,12 @@ class GeminiTranslatorApp(QMainWindow):
             self.btn_translate.setText("Translate")
             self.btn_translate.setDisabled(False)
 
-if __name__ == "__main__":
+
+def main():
     app = QApplication(sys.argv)
     window = GeminiTranslatorApp()
     window.show()
     sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()
