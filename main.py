@@ -17,6 +17,7 @@ class AnalysisPanel(QScrollArea):
         super().__init__()
         self.setWidgetResizable(True)
         self.setMaximumHeight(250)
+        # Modern Card Style
         self.setStyleSheet("""
             QScrollArea { background-color: #FFFFFF; border: 1px solid #DADCE0; border-radius: 8px; }
             QScrollBar:vertical { border: none; background: #F1F3F4; width: 8px; border-radius: 4px; }
@@ -28,7 +29,7 @@ class AnalysisPanel(QScrollArea):
         self.content_widget.setStyleSheet("background-color: transparent;")
         self.layout = QVBoxLayout(self.content_widget)
         self.layout.setContentsMargins(15, 15, 15, 15)
-        self.layout.setSpacing(12) # Slightly increased spacing
+        self.layout.setSpacing(12) 
 
         # Title Label
         self.lbl_title = QLabel(title)
@@ -37,7 +38,10 @@ class AnalysisPanel(QScrollArea):
 
         # Content Labels (Stored in a dict for easy updating)
         self.labels = {}
-        for key in ["Structure", "Grammar", "Synonyms", "Antonyms", "Correction"]:
+        # Keys used internally
+        self.keys = ["Structure", "Grammar", "Synonyms", "Antonyms", "Correction"]
+        
+        for key in self.keys:
             lbl = QLabel(f"{key}: -")
             lbl.setWordWrap(True)
             # Default style
@@ -52,7 +56,7 @@ class AnalysisPanel(QScrollArea):
 
     def update_data(self, data, is_source=False):
         """
-        Updates labels and applies RTL alignment if Urdu is detected.
+        Updates labels and applies RTL alignment AND Urdu Label Translation.
         """
         def fmt_list(key):
             val = data.get(key, [])
@@ -60,45 +64,74 @@ class AnalysisPanel(QScrollArea):
 
         # Helper to check for Urdu characters
         def is_urdu(text):
-            # Range for Arabic/Urdu unicode
             return bool(re.search(r'[\u0600-\u06FF]', str(text)))
 
-        # Update Text
+        # Urdu Label Mappings
+        URDU_LABELS = {
+            "Structure": "ساخت",
+            "Grammar": "قواعد",
+            "Synonyms": "مترادفات",
+            "Antonyms": "متضاد",
+            "Correction": "تصحیح"
+        }
+
+        # 1. Extract Raw Data
         raw_struct = data.get('structure', '-')
         raw_grammar = data.get('grammar', '-')
         raw_syns = fmt_list('synonyms')
         raw_ants = fmt_list('antonyms')
+        raw_corr = data.get("correction", "No data")
 
-        self.labels["Structure"].setText(f"<b>Structure:</b> {raw_struct}")
-        self.labels["Grammar"].setText(f"<b>Grammar:</b> {raw_grammar}")
-        self.labels["Synonyms"].setText(f"<b>Synonyms:</b> {raw_syns}")
-        self.labels["Antonyms"].setText(f"<b>Antonyms:</b> {raw_ants}")
+        # 2. Detect Language (Check structure field to decide panel language)
+        # If the content is Urdu, we switch the Headers to Urdu too.
+        is_content_urdu = is_urdu(raw_struct) or is_urdu(raw_grammar)
 
-        # Check Correction
+        # 3. Helper to format the final string (<b>Label:</b> Value)
+        def set_label_text(key, value, is_urdu_mode):
+            label_title = URDU_LABELS[key] if is_urdu_mode else key
+            return f"<b>{label_title}:</b> {value}"
+
+        # 4. Update Standard Labels
+        self.labels["Structure"].setText(set_label_text("Structure", raw_struct, is_content_urdu))
+        self.labels["Grammar"].setText(set_label_text("Grammar", raw_grammar, is_content_urdu))
+        self.labels["Synonyms"].setText(set_label_text("Synonyms", raw_syns, is_content_urdu))
+        self.labels["Antonyms"].setText(set_label_text("Antonyms", raw_ants, is_content_urdu))
+
+        # 5. Handle Correction (Source Only)
         if is_source:
-            corr = data.get("correction", "No data")
-            if corr and corr != "No errors found" and corr != "Correct":
+            if raw_corr and raw_corr != "No errors found" and raw_corr != "Correct":
                 self.labels["Correction"].show()
-                self.labels["Correction"].setText(f"<b>Correction:</b> {corr}")
+                # Check if correction itself is Urdu
+                corr_is_urdu = is_urdu(raw_corr)
+                label_title = URDU_LABELS["Correction"] if corr_is_urdu else "Correction"
+                
+                self.labels["Correction"].setText(f"<b>{label_title}:</b> {raw_corr}")
                 self.labels["Correction"].setStyleSheet("color: #D93025; font-size: 14px;") 
-                if is_urdu(corr): self.labels["Correction"].setAlignment(Qt.AlignRight)
+                
+                if corr_is_urdu: self.labels["Correction"].setAlignment(Qt.AlignRight)
                 else: self.labels["Correction"].setAlignment(Qt.AlignLeft)
             else:
                 self.labels["Correction"].show()
-                self.labels["Correction"].setText("<b>Correction:</b> Perfect! ✅")
+                # "Perfect" message
+                msg = "زبردست! ✅" if is_content_urdu else "Perfect! ✅"
+                label_title = URDU_LABELS["Correction"] if is_content_urdu else "Correction"
+                
+                self.labels["Correction"].setText(f"<b>{label_title}:</b> {msg}")
                 self.labels["Correction"].setStyleSheet("color: #188038; font-size: 14px;")
-                self.labels["Correction"].setAlignment(Qt.AlignLeft)
+                
+                if is_content_urdu: self.labels["Correction"].setAlignment(Qt.AlignRight)
+                else: self.labels["Correction"].setAlignment(Qt.AlignLeft)
         else:
             self.labels["Correction"].hide()
 
-        # Apply RTL Alignment if Urdu detected in content
+        # 6. Apply Alignment & Fonts
         for key, lbl in self.labels.items():
             if key == "Correction": continue 
-            text_content = lbl.text()
-            if is_urdu(text_content):
+            
+            # Use the panel-wide language detection for alignment consistency
+            if is_content_urdu:
                 lbl.setAlignment(Qt.AlignRight)
-                # Ensure font supports Urdu well if installed, else fallback
-                lbl.setFont(QFont("Noto Nastaliq Urdu", 11)) 
+                lbl.setFont(QFont("Noto Nastaliq Urdu", 12)) 
             else:
                 lbl.setAlignment(Qt.AlignLeft)
                 lbl.setFont(QFont("Segoe UI", 10))
@@ -273,12 +306,9 @@ class GeminiTranslatorApp(QMainWindow):
     # --- Logic ---
 
     def swap_languages(self):
-        # 1. Capture BOTH current states
         original_source = self.combo_source.currentText()
-        # original_target is not needed for setting, we just want to set source = current target
         tgt_txt = self.combo_target.currentText()
         
-        # 2. Perform Swap
         self.combo_source.setCurrentText(tgt_txt)
         
         if original_source == "Auto Detect":
@@ -286,7 +316,6 @@ class GeminiTranslatorApp(QMainWindow):
         else:
             self.combo_target.setCurrentText(original_source)
             
-        # 3. Swap Text Content
         current_output = self.output_text.toPlainText()
         if current_output:
             self.input_text.setText(current_output)
