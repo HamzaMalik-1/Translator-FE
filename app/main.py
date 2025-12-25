@@ -66,11 +66,41 @@ class AnalysisPanel(QScrollArea):
         """
         def fmt_list(key):
             val = data.get(key, [])
+            # Filter out any empty strings
+            if isinstance(val, list):
+                val = [item for item in val if item and str(item).strip()]
             return ", ".join(val) if val else "-"
 
         # Helper to check for Urdu characters
         def is_urdu(text):
-            return bool(re.search(r'[\u0600-\u06FF]', str(text)))
+            if not text or not isinstance(text, str):
+                return False
+            return bool(re.search(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]', str(text)))
+
+        # Helper to check for English letters
+        def has_english(text):
+            if not text or not isinstance(text, str):
+                return False
+            return bool(re.search(r'[a-zA-Z]', str(text)))
+
+        # Helper to clean mixed language text (remove English from Urdu)
+        def clean_urdu_text(text):
+            if not text or not isinstance(text, str):
+                return text
+            
+            # If it's already pure Urdu, return as is
+            if is_urdu(text) and not has_english(text):
+                return text
+            
+            # Extract Urdu parts and join them
+            urdu_parts = re.findall(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF][\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\s\u064B-\u065F,،.۔!؟:؛]*', text)
+            if urdu_parts:
+                cleaned = ' '.join(urdu_parts).strip()
+                # Clean up extra punctuation
+                cleaned = re.sub(r'[\s,،]+$', '', cleaned)
+                return cleaned if cleaned else text
+            
+            return text
 
         # Urdu Label Mappings
         URDU_LABELS = {
@@ -88,30 +118,38 @@ class AnalysisPanel(QScrollArea):
         raw_ants = fmt_list('antonyms')
         raw_corr = data.get("correction", "No data")
 
-        # 2. Detect Language 
+        # 2. Clean Urdu data (remove English text)
+        if force_language == 'urdu':
+            raw_struct = clean_urdu_text(raw_struct)
+            raw_grammar = clean_urdu_text(raw_grammar)
+            raw_syns = clean_urdu_text(raw_syns) if isinstance(raw_syns, str) else raw_syns
+            raw_ants = clean_urdu_text(raw_ants) if isinstance(raw_ants, str) else raw_ants
+            raw_corr = clean_urdu_text(raw_corr)
+
+        # 3. Detect Language 
         # Use force_language if provided, otherwise auto-detect
         if force_language == 'urdu':
             is_content_urdu = True
         elif force_language == 'english':
             is_content_urdu = False
         else:
-            # Auto-detect based on content
+            # Auto-detect based on cleaned content
             is_content_urdu = is_urdu(raw_struct) or is_urdu(raw_grammar)
 
-        # 3. Helper to format the final string (<b>Label:</b> Value)
+        # 4. Helper to format the final string (<b>Label:</b> Value)
         def set_label_text(key, value, is_urdu_mode):
             label_title = URDU_LABELS[key] if is_urdu_mode else key
             return f"<b>{label_title}:</b> {value}"
 
-        # 4. Update Standard Labels
+        # 5. Update Standard Labels
         self.labels["Structure"].setText(set_label_text("Structure", raw_struct, is_content_urdu))
         self.labels["Grammar"].setText(set_label_text("Grammar", raw_grammar, is_content_urdu))
         self.labels["Synonyms"].setText(set_label_text("Synonyms", raw_syns, is_content_urdu))
         self.labels["Antonyms"].setText(set_label_text("Antonyms", raw_ants, is_content_urdu))
 
-        # 5. Handle Correction (Source Only)
+        # 6. Handle Correction (Source Only)
         if is_source:
-            if raw_corr and raw_corr != "No errors found" and raw_corr != "Correct":
+            if raw_corr and raw_corr != "No data" and raw_corr != "No errors found" and raw_corr != "Correct":
                 self.labels["Correction"].show()
                 # Check if correction itself is Urdu
                 corr_is_urdu = is_urdu(raw_corr) if not force_language else (force_language == 'urdu')
@@ -120,8 +158,10 @@ class AnalysisPanel(QScrollArea):
                 self.labels["Correction"].setText(f"<b>{label_title}:</b> {raw_corr}")
                 self.labels["Correction"].setStyleSheet("color: #D93025; font-size: 14px;") 
                 
-                if corr_is_urdu: self.labels["Correction"].setAlignment(Qt.AlignRight)
-                else: self.labels["Correction"].setAlignment(Qt.AlignLeft)
+                if corr_is_urdu: 
+                    self.labels["Correction"].setAlignment(Qt.AlignRight)
+                else: 
+                    self.labels["Correction"].setAlignment(Qt.AlignLeft)
             else:
                 self.labels["Correction"].show()
                 # "Perfect" message
@@ -131,19 +171,32 @@ class AnalysisPanel(QScrollArea):
                 self.labels["Correction"].setText(f"<b>{label_title}:</b> {msg}")
                 self.labels["Correction"].setStyleSheet("color: #188038; font-size: 14px;")
                 
-                if is_content_urdu: self.labels["Correction"].setAlignment(Qt.AlignRight)
-                else: self.labels["Correction"].setAlignment(Qt.AlignLeft)
+                if is_content_urdu: 
+                    self.labels["Correction"].setAlignment(Qt.AlignRight)
+                else: 
+                    self.labels["Correction"].setAlignment(Qt.AlignLeft)
         else:
             self.labels["Correction"].hide()
 
-        # 6. Apply Alignment & Fonts
+        # 7. Apply Alignment & Fonts
         for key, lbl in self.labels.items():
-            if key == "Correction": continue 
+            if key == "Correction": 
+                continue 
             
             # Use the panel-wide language detection for alignment consistency
             if is_content_urdu:
                 lbl.setAlignment(Qt.AlignRight)
-                lbl.setFont(QFont("Noto Nastaliq Urdu", 12)) 
+                # Try multiple Urdu fonts with fallbacks
+                urdu_fonts = ["Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Urdu Naskh Asiatype", "Arial"]
+                font_found = False
+                for font_name in urdu_fonts:
+                    font = QFont(font_name, 12)
+                    if font.exactMatch() or font_name == "Arial":  # Arial as last resort
+                        lbl.setFont(font)
+                        font_found = True
+                        break
+                if not font_found:
+                    lbl.setFont(QFont("Segoe UI", 10))  # Fallback to Segoe UI
             else:
                 lbl.setAlignment(Qt.AlignLeft)
                 lbl.setFont(QFont("Segoe UI", 10))
@@ -235,6 +288,7 @@ class GeminiTranslatorApp(QMainWindow):
         self.setWindowTitle("Gemini AI Translator")
         self.resize(1100, 900)
         self.current_sentence_translation = ""  # Store the current sentence translation
+        self.current_sentence_analysis = {}  # Store the full sentence analysis for restoration
         
         # Update the path for styles.qss since it's at root level
         styles_path = os.path.join(os.path.dirname(__file__), '..', 'styles.qss')
@@ -443,11 +497,13 @@ class GeminiTranslatorApp(QMainWindow):
             self.left_analysis.lbl_title.setText(f"{tgt_txt} Analysis")
             self.right_analysis.lbl_title.setText(f"{original_source} Analysis")
             self.current_sentence_translation = ""  # Clear stored translation
+            self.current_sentence_analysis = {}  # Clear stored analysis
             self.btn_restore_sentence.hide()
 
     def start_translation(self):
         text = self.input_text.toPlainText()
-        if not text: return
+        if not text: 
+            return
 
         self.set_loading(True)
         self.output_text.clear()
@@ -468,6 +524,7 @@ class GeminiTranslatorApp(QMainWindow):
         translation = result.get("translation", "")
         self.output_text.setText(translation)
         self.current_sentence_translation = translation  # Store the sentence translation
+        self.current_sentence_analysis = result  # Store the full analysis for restoration
         
         src_data = result.get("source_analysis", {})
         self.left_analysis.update_data(src_data, is_source=True)
@@ -480,7 +537,7 @@ class GeminiTranslatorApp(QMainWindow):
 
     def analyze_selected_word_bilingual(self):
         """
-        NEW: Bilingual word analysis - shows analysis in both panels
+        Bilingual word analysis - shows analysis in both panels
         """
         cursor = self.input_text.textCursor()
         selected_text = cursor.selectedText().strip()
@@ -512,9 +569,14 @@ class GeminiTranslatorApp(QMainWindow):
 
     def handle_bilingual_word_result(self, result):
         """
-        NEW: Handle bilingual word analysis result for both panels
+        Handle bilingual word analysis result for both panels
         """
         self.set_loading(False)
+        
+        # Check for errors
+        if "error" in result:
+            QMessageBox.warning(self, "Analysis Error", result["error"])
+            return
         
         # Get source analysis data
         source_data = result.get("source_analysis", {})
@@ -585,19 +647,40 @@ class GeminiTranslatorApp(QMainWindow):
             self.btn_restore_sentence.show()
         elif self.current_sentence_translation and self.output_text.toPlainText() != self.current_sentence_translation:
             self.btn_restore_sentence.show()
+        else:
+            self.btn_restore_sentence.hide()
 
     def restore_sentence_translation(self):
         """Restore the original sentence translation to output area"""
-        if self.current_sentence_translation:
+        if self.current_sentence_translation and self.current_sentence_analysis:
+            # Restore the translation
             self.output_text.setText(self.current_sentence_translation)
+            
+            # Restore the analysis panels
+            src_lang = self.combo_source.currentText()
+            tgt_lang = self.combo_target.currentText()
+            
+            self.left_analysis.lbl_title.setText(f"{src_lang} Analysis")
+            self.right_analysis.lbl_title.setText(f"{tgt_lang} Analysis")
+            
+            src_data = self.current_sentence_analysis.get("source_analysis", {})
+            self.left_analysis.update_data(src_data, is_source=True)
+            
+            tgt_data = self.current_sentence_analysis.get("target_analysis", {})
+            self.right_analysis.update_data(tgt_data, is_source=False)
+            
             self.btn_restore_sentence.hide()
             
-            # Optional: Update analysis panels back to sentence analysis
-            # You might want to store the sentence analysis data too
             QMessageBox.information(
                 self, 
                 "Sentence Translation Restored", 
-                "The full sentence translation is now shown in the output area."
+                "The full sentence translation and analysis are now restored."
+            )
+        else:
+            QMessageBox.warning(
+                self,
+                "No Sentence Data",
+                "No previous sentence translation found to restore."
             )
 
     # OLD method - kept for backward compatibility
@@ -650,8 +733,11 @@ class GeminiTranslatorApp(QMainWindow):
 
     def handle_voice_result(self, text):
         self.btn_mic.setDisabled(False)
-        if text: self.input_text.setText(text)
-        else: self.input_text.setPlaceholderText("Could not hear audio. Try again.")
+        if text: 
+            self.input_text.setText(text)
+            self.input_text.setPlaceholderText("Enter text here...")
+        else: 
+            self.input_text.setPlaceholderText("Could not hear audio. Try again.")
 
     def speak_input(self):
         text = self.input_text.toPlainText()

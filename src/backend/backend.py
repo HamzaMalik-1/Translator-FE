@@ -5,6 +5,7 @@ import pygame
 import json
 import os
 import time
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -142,35 +143,65 @@ class AIService:
         is_long = len(text.split()) > 30
         syn_instruction = "Return empty lists [] for synonyms/antonyms." if is_long else "Provide 3 synonyms and 3 antonyms."
 
-        # DYNAMIC LANGUAGE RULES
+        # DYNAMIC LANGUAGE RULES - STRICTLY ENFORCED
         src_rule = ""
         if src == "Urdu":
             src_rule = """
-            - Source is URDU. 
-            - 'source_analysis' fields (structure, grammar, correction) MUST be in URDU SCRIPT.
-            - Do NOT use English grammatical terms (e.g. don't write 'Verb', write 'فعل').
-            - Synonyms and Antonyms MUST be Urdu words.
+            CRITICAL LANGUAGE RULES FOR URDU SOURCE:
+            1. ABSOLUTELY NO ENGLISH WORDS in any 'source_analysis' field.
+            2. Structure analysis: Must be 100% Urdu script. Example: "یہ سادہ جملہ ہے۔" (CORRECT), NOT "This is a simple sentence."
+            3. Grammar analysis: Must use ONLY Urdu grammatical terms:
+               - Noun = اسم
+               - Verb = فعل
+               - Adjective = صفت
+               - Adverb = حال
+               - Subject = فاعل
+               - Object = مفعول
+               - Sentence = جملہ
+               - Phrase = فقرہ
+            4. Synonyms: List of Urdu words ONLY in Urdu script.
+            5. Antonyms: List of Urdu words ONLY in Urdu script.
+            6. Correction: If perfect, write ONLY "زبردست! ✅" - no English text.
+            7. ZERO tolerance for language mixing in Urdu fields.
             """
         else:
             src_rule = f"""
-            - Source is {src}. 
-            - 'source_analysis' fields should be in English.
-            - Synonyms and Antonyms MUST be in {src}.
+            CRITICAL LANGUAGE RULES FOR {src.upper()} SOURCE:
+            1. ABSOLUTELY NO MIXED LANGUAGES in any 'source_analysis' field.
+            2. All analysis must be in {src} only.
+            3. Structure, grammar, correction: Must use {src} language only.
+            4. Synonyms: List of {src} words only.
+            5. Antonyms: List of {src} words only.
+            6. Correction: If perfect, write ONLY "Perfect! ✅" in {src}.
             """
 
         tgt_rule = ""
         if tgt == "Urdu":
             tgt_rule = """
-            - Target is URDU.
-            - 'target_analysis' fields (structure, grammar) MUST be in URDU SCRIPT.
-            - Do NOT use English grammatical terms (e.g. don't write 'Subject', write 'فاعل').
-            - Synonyms and Antonyms MUST be Urdu words.
+            CRITICAL LANGUAGE RULES FOR URDU TARGET:
+            1. ABSOLUTELY NO ENGLISH WORDS in any 'target_analysis' field.
+            2. Structure analysis: Must be 100% Urdu script. Example: "اس جملے کی ساخت سادہ ہے۔"
+            3. Grammar analysis: Must use ONLY Urdu grammatical terms:
+               - Noun = اسم
+               - Verb = فعل
+               - Adjective = صفت
+               - Adverb = حال
+               - Subject = فاعل
+               - Object = مفعول
+               - Sentence = جملہ
+               - Phrase = فقرہ
+            4. Synonyms: List of Urdu words ONLY in Urdu script.
+            5. Antonyms: List of Urdu words ONLY in Urdu script.
+            6. ZERO tolerance for language mixing in Urdu fields.
             """
         else:
             tgt_rule = f"""
-            - Target is {tgt}.
-            - 'target_analysis' fields should be in English.
-            - Synonyms and Antonyms MUST be in {tgt}.
+            CRITICAL LANGUAGE RULES FOR {tgt.upper()} TARGET:
+            1. ABSOLUTELY NO MIXED LANGUAGES in any 'target_analysis' field.
+            2. All analysis must be in {tgt} only.
+            3. Structure, grammar: Must use {tgt} language only.
+            4. Synonyms: List of {tgt} words only.
+            5. Antonyms: List of {tgt} words only.
             """
 
         prompt = f"""
@@ -189,36 +220,166 @@ class AIService:
         
         {syn_instruction}
         
-        STRICT RULES:
+        ==================== STRICT LANGUAGE ENFORCEMENT ====================
         {src_rule}
         {tgt_rule}
+        =====================================================================
+        
+        STRUCTURE GUIDELINES:
+        - For structure analysis: Describe the sentence type and construction
+        - For grammar analysis: Break down the grammatical components
+        - For synonyms/antonyms: Provide common, appropriate words/phrases
+        
+        IMPORTANT FOR URDU:
+        - Use proper Urdu script (Nastaliq style)
+        - Avoid Romanized Urdu (Urdu written in English letters)
+        - Use proper Urdu punctuation
+        
+        JSON FIELD-SPECIFIC LANGUAGE RULES:
+        1. For Urdu sections (source or target):
+           - "structure": 100% Urdu script, NO English
+           - "grammar": 100% Urdu script, NO English  
+           - "correction": 100% Urdu script, NO English
+           - "synonyms": List of Urdu words in Urdu script
+           - "antonyms": List of Urdu words in Urdu script
+           
+        2. For English/non-Urdu sections:
+           - All fields: 100% in that language, NO mixing
+           
+        3. The JSON keys ("structure", "grammar", etc.) stay in English.
+           Only the VALUES change language based on rules above.
+        
+        FINAL CHECK: Before outputting, verify NO language mixing in any field.
         
         Strictly output this NESTED JSON structure:
         {{
             "translation": "The direct translated text",
             "source_analysis": {{
-                "structure": "Analysis of structure",
-                "grammar": "Analysis of grammar",
-                "correction": "Corrected text or 'No errors found'",
-                "synonyms": ["List of synonyms in {src} language"],
-                "antonyms": ["List of antonyms in {src} language"]
+                "structure": "Analysis of sentence structure",
+                "grammar": "Analysis of grammatical components",
+                "correction": "Corrected text or 'Perfect! ✅' or 'زبردست! ✅'",
+                "synonyms": ["List of synonyms in appropriate language"],
+                "antonyms": ["List of antonyms in appropriate language"]
             }},
             "target_analysis": {{
-                "structure": "Analysis of structure",
-                "grammar": "Analysis of grammar",
-                "synonyms": ["List of synonyms in {tgt} language"],
-                "antonyms": ["List of antonyms in {tgt} language"]
+                "structure": "Analysis of sentence structure",
+                "grammar": "Analysis of grammatical components",
+                "synonyms": ["List of synonyms in appropriate language"],
+                "antonyms": ["List of antonyms in appropriate language"]
             }}
         }}
+        
+        ULTIMATE RULE: If analyzing Urdu text, use ZERO English words in any analysis field.
         """
+        
         response = self.retry_api_call(prompt)
-        return self._parse_json(response.text)
+        result = self._parse_json(response.text)
+        
+        # Apply language validation to catch any remaining mixing
+        return self._validate_language_purity(result, src, tgt)
+
+    def _validate_language_purity(self, result, source_lang, target_lang):
+        """
+        Validates and cleans language mixing in the result
+        """
+        def clean_urdu_field(field_value):
+            """Remove English text from Urdu fields"""
+            if not field_value or not isinstance(field_value, str):
+                return field_value
+            
+            # If it's already pure Urdu, return as is
+            if re.search(r'[\u0600-\u06FF]', field_value) and not re.search(r'[a-zA-Z]', field_value):
+                return field_value
+            
+            # Try to extract Urdu parts (between Urdu characters)
+            urdu_parts = re.findall(r'[\u0600-\u06FF][\u0600-\u06FF\s\u064B-\u065F,،.!؟]*', field_value)
+            if urdu_parts:
+                return ' '.join(urdu_parts).strip()
+            
+            return field_value
+        
+        def clean_english_field(field_value, lang):
+            """Ensure non-Urdu fields don't have Urdu"""
+            if not field_value or not isinstance(field_value, str):
+                return field_value
+            
+            # Remove Urdu script if present in non-Urdu field
+            if lang != "Urdu" and re.search(r'[\u0600-\u06FF]', field_value):
+                # Keep only non-Urdu characters
+                cleaned = re.sub(r'[\u0600-\u06FF]', '', field_value)
+                return cleaned.strip()
+            
+            return field_value
+        
+        # Clean source analysis
+        if "source_analysis" in result:
+            sa = result["source_analysis"]
+            for field in ["structure", "grammar", "correction"]:
+                if field in sa:
+                    if source_lang == "Urdu":
+                        sa[field] = clean_urdu_field(sa[field])
+                    else:
+                        sa[field] = clean_english_field(sa[field], source_lang)
+            
+            # Clean lists
+            for field in ["synonyms", "antonyms"]:
+                if field in sa and isinstance(sa[field], list):
+                    if source_lang == "Urdu":
+                        sa[field] = [clean_urdu_field(item) for item in sa[field]]
+                    else:
+                        sa[field] = [clean_english_field(item, source_lang) for item in sa[field]]
+        
+        # Clean target analysis
+        if "target_analysis" in result:
+            ta = result["target_analysis"]
+            for field in ["structure", "grammar"]:
+                if field in ta:
+                    if target_lang == "Urdu":
+                        ta[field] = clean_urdu_field(ta[field])
+                    else:
+                        ta[field] = clean_english_field(ta[field], target_lang)
+            
+            # Clean lists
+            for field in ["synonyms", "antonyms"]:
+                if field in ta and isinstance(ta[field], list):
+                    if target_lang == "Urdu":
+                        ta[field] = [clean_urdu_field(item) for item in ta[field]]
+                    else:
+                        ta[field] = [clean_english_field(item, target_lang) for item in ta[field]]
+        
+        return result
 
     def _parse_json(self, text):
         try:
-            clean_text = text.replace('```json', '').replace('```', '').strip()
+            # Clean the text to extract JSON
+            clean_text = text.strip()
+            
+            # Remove markdown code blocks if present
+            if clean_text.startswith('```json'):
+                clean_text = clean_text[7:]
+            elif clean_text.startswith('```'):
+                clean_text = clean_text[3:]
+            
+            if clean_text.endswith('```'):
+                clean_text = clean_text[:-3]
+            
+            clean_text = clean_text.strip()
+            
+            # Parse JSON
             return json.loads(clean_text)
-        except:
+        except json.JSONDecodeError as e:
+            print(f"JSON Parse Error: {e}")
+            print(f"Raw text: {text}")
+            # Try to find JSON in the text
+            json_match = re.search(r'\{.*\}', text, re.DOTALL)
+            if json_match:
+                try:
+                    return json.loads(json_match.group())
+                except:
+                    pass
+            return {}
+        except Exception as e:
+            print(f"Error parsing JSON: {e}")
             return {}
 
     # --- Single Word Analysis ---
@@ -253,48 +414,6 @@ class AIService:
         is_source_urdu = (source_lang == "Urdu")
         is_target_urdu = (target_lang == "Urdu")
         
-        # Source language rules
-        source_instr = ""
-        if is_source_urdu:
-            source_instr = f"""
-            FOR SOURCE ANALYSIS (URDU):
-            1. Definition: Provide definition in URDU SCRIPT (e.g., "پڑھنے کا عمل")
-            2. Part of speech: Use URDU terms (اسم for Noun, فعل for Verb, صفت for Adjective, etc.)
-            3. Synonyms: Provide 3-5 URDU words
-            4. Antonyms: Provide 3-5 URDU words
-            5. ALL text in source_analysis MUST be in URDU SCRIPT, NO English mixed
-            """
-        else:
-            source_instr = f"""
-            FOR SOURCE ANALYSIS ({source_lang}):
-            1. Definition: Provide definition in English
-            2. Part of speech: Use English terms (Noun, Verb, Adjective, etc.)
-            3. Synonyms: Provide 3-5 words in {source_lang}
-            4. Antonyms: Provide 3-5 words in {source_lang}
-            """
-        
-        # Target language rules  
-        target_instr = ""
-        if is_target_urdu:
-            target_instr = f"""
-            FOR TARGET ANALYSIS (URDU):
-            1. Translation: Provide natural translation in URDU SCRIPT
-            2. Definition: Provide definition in URDU SCRIPT
-            3. Part of speech: Use URDU terms (اسم for Noun, فعل for Verb, etc.)
-            4. Synonyms: Provide 3-5 URDU words
-            5. Antonyms: Provide 3-5 URDU words
-            6. ALL text in target_analysis MUST be in URDU SCRIPT, NO English mixed
-            """
-        else:
-            target_instr = f"""
-            FOR TARGET ANALYSIS ({target_lang}):
-            1. Translation: Provide natural translation in {target_lang}
-            2. Definition: Provide definition in English
-            3. Part of speech: Use English terms (Noun, Verb, Adjective, etc.)
-            4. Synonyms: Provide 3-5 words in {target_lang}
-            5. Antonyms: Provide 3-5 words in {target_lang}
-            """
-        
         # Common part of speech mappings for consistency
         pos_mappings = """
         COMMON PART OF SPEECH MAPPINGS:
@@ -308,6 +427,53 @@ class AIService:
         - Interjection = حرف ندا
         """
         
+        # Source language rules - STRICTLY ENFORCED
+        if is_source_urdu:
+            source_instr = f"""
+            FOR SOURCE ANALYSIS (URDU) - STRICT RULES:
+            1. ABSOLUTELY NO ENGLISH WORDS in any field.
+            2. Definition: 100% Urdu script (e.g., "پڑھنے کا عمل")
+            3. Part of speech: Use ONLY Urdu terms from mapping above
+            4. Synonyms: 3-5 URDU words in URDU SCRIPT ONLY
+            5. Antonyms: 3-5 URDU words in URDU SCRIPT ONLY
+            6. ZERO tolerance for language mixing
+            7. The JSON keys stay in English, values must be pure Urdu
+            """
+        else:
+            source_instr = f"""
+            FOR SOURCE ANALYSIS ({source_lang}) - STRICT RULES:
+            1. ABSOLUTELY NO MIXED LANGUAGES in any field.
+            2. Definition: {source_lang} only
+            3. Part of speech: English terms only (Noun, Verb, etc.)
+            4. Synonyms: 3-5 words in {source_lang} only
+            5. Antonyms: 3-5 words in {source_lang} only
+            6. ZERO tolerance for language mixing
+            """
+        
+        # Target language rules - STRICTLY ENFORCED
+        if is_target_urdu:
+            target_instr = f"""
+            FOR TARGET ANALYSIS (URDU) - STRICT RULES:
+            1. ABSOLUTELY NO ENGLISH WORDS in any field.
+            2. Translation: 100% Urdu script
+            3. Definition: 100% Urdu script
+            4. Part of speech: Use ONLY Urdu terms from mapping above
+            5. Synonyms: 3-5 URDU words in URDU SCRIPT ONLY
+            6. Antonyms: 3-5 URDU words in URDU SCRIPT ONLY
+            7. ZERO tolerance for language mixing
+            8. Use proper Urdu grammar and punctuation
+            """
+        else:
+            target_instr = f"""
+            FOR TARGET ANALYSIS ({target_lang}) - STRICT RULES:
+            1. ABSOLUTELY NO MIXED LANGUAGES in any field.
+            2. Translation: {target_lang} only
+            3. Definition: English only
+            4. Part of speech: English terms only
+            5. Synonyms: 3-5 words in {target_lang} only
+            6. Antonyms: 3-5 words in {target_lang} only
+            """
+        
         prompt = f"""
         ACT AS A BILINGUAL LINGUISTIC EXPERT.
         
@@ -315,28 +481,34 @@ class AIService:
         
         {pos_mappings}
         
+        ==================== CRITICAL LANGUAGE RULES ====================
         IMPORTANT INSTRUCTIONS:
         {source_instr}
+        
         {target_instr}
         
-        CRITICAL: Do NOT mix languages within the same section. 
-        If a section is supposed to be in Urdu, use ONLY Urdu script.
-        If a section is supposed to be in English, use ONLY English.
+        ABSOLUTE REQUIREMENTS:
+        1. NO MIXED LANGUAGES within any section
+        2. If Urdu section: ZERO English words allowed
+        3. If non-Urdu section: ZERO Urdu script allowed
+        4. Each field must be PURE in its assigned language
+        5. JSON keys stay in English, VALUES follow language rules above
+        =================================================================
         
         Provide comprehensive bilingual analysis:
         
         1. For SOURCE language ({source_lang}):
-           - Definition (follow language rules above)
-           - Part of speech (use appropriate language terms)
-           - 3-5 Synonyms (in appropriate language)
-           - 3-5 Antonyms (in appropriate language)
+           - Definition (100% pure language as per rules)
+           - Part of speech (appropriate language terms)
+           - 3-5 Synonyms (appropriate language only)
+           - 3-5 Antonyms (appropriate language only)
         
         2. For TARGET language ({target_lang}):
-           - Natural translation of the word
-           - Definition (follow language rules above)
-           - Part of speech (use appropriate language terms)
-           - 3-5 Synonyms (in appropriate language)
-           - 3-5 Antonyms (in appropriate language)
+           - Natural translation (100% pure language)
+           - Definition (appropriate language only)
+           - Part of speech (appropriate language terms)
+           - 3-5 Synonyms (appropriate language only)
+           - 3-5 Antonyms (appropriate language only)
         
         Strictly output this JSON format:
         {{
@@ -358,7 +530,7 @@ class AIService:
             }}
         }}
         
-        REMEMBER: No mixed language content. Each section must be purely in its assigned language.
+        FINAL VERIFICATION: Check each field for language purity before output.
         """
         
         try:
@@ -374,6 +546,9 @@ class AIService:
             # Add translation at root level for convenience
             if "target_analysis" in result and "translation" in result["target_analysis"]:
                 result["translation"] = result["target_analysis"]["translation"]
+            
+            # Apply language validation
+            result = self._validate_language_purity(result, source_lang, target_lang)
             
             return result
         except Exception as e:
