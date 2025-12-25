@@ -1,0 +1,16 @@
+"""
+Main entry point for the translator application
+"""
+import sys
+from PySide6.QtWidgets import QApplication
+from src.ui.main_window import GeminiTranslatorApp
+
+def main():
+    """Main function to run the application"""
+    app = QApplication(sys.argv)
+    window = GeminiTranslatorApp()
+    window.show()
+    sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()

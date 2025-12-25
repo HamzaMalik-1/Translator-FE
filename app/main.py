@@ -13,8 +13,8 @@ from PySide6.QtGui import QIcon, QFont, QAction, QContextMenuEvent
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Import our modules - Now relative to src directory
-from backend.backend import AIService
-from worker.worker import TranslationWorker, AudioWorker, TTSWorker, WordAnalysisWorker, DirectBilingualWordWorker
+from src.backend.backend import AIService
+from src.worker.workers import TranslationWorker, AudioWorker, TTSWorker, WordAnalysisWorker, DirectBilingualWordWorker
 
 # --- HELPER CLASS: Analysis Panel (Reusable Card) ---
 class AnalysisPanel(QScrollArea):
