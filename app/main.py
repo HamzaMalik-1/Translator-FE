@@ -234,6 +234,7 @@ class GeminiTranslatorApp(QMainWindow):
         self.ai_service = AIService()
         self.setWindowTitle("Gemini AI Translator")
         self.resize(1100, 900)
+        self.current_sentence_translation = ""  # Store the current sentence translation
         
         # Update the path for styles.qss since it's at root level
         styles_path = os.path.join(os.path.dirname(__file__), '..', 'styles.qss')
@@ -391,6 +392,32 @@ class GeminiTranslatorApp(QMainWindow):
         analysis_container.addWidget(self.right_analysis)
         main_layout.addLayout(analysis_container)
 
+        # 5. RESTORE SENTENCE BUTTON (Optional - appears when word analysis is done)
+        self.restore_btn_container = QHBoxLayout()
+        self.btn_restore_sentence = QPushButton("Show Sentence Translation")
+        self.btn_restore_sentence.setCursor(Qt.PointingHandCursor)
+        self.btn_restore_sentence.setFixedSize(200, 32)
+        self.btn_restore_sentence.setStyleSheet("""
+            QPushButton { 
+                background-color: #F1F3F4; 
+                color: #5F6368; 
+                font-size: 14px; 
+                border-radius: 16px; 
+                border: 1px solid #DADCE0;
+            }
+            QPushButton:hover { 
+                background-color: #E8F0FE; 
+                color: #1A73E8; 
+            }
+        """)
+        self.btn_restore_sentence.clicked.connect(self.restore_sentence_translation)
+        self.btn_restore_sentence.hide()  # Hide initially
+        
+        self.restore_btn_container.addStretch()
+        self.restore_btn_container.addWidget(self.btn_restore_sentence)
+        self.restore_btn_container.addStretch()
+        main_layout.addLayout(self.restore_btn_container)
+
     def create_icon_btn(self, text, tooltip, callback):
         btn = QPushButton(text)
         btn.setToolTip(tooltip)
@@ -415,6 +442,8 @@ class GeminiTranslatorApp(QMainWindow):
             self.output_text.clear()
             self.left_analysis.lbl_title.setText(f"{tgt_txt} Analysis")
             self.right_analysis.lbl_title.setText(f"{original_source} Analysis")
+            self.current_sentence_translation = ""  # Clear stored translation
+            self.btn_restore_sentence.hide()
 
     def start_translation(self):
         text = self.input_text.toPlainText()
@@ -436,13 +465,18 @@ class GeminiTranslatorApp(QMainWindow):
 
     def handle_translation_result(self, result):
         self.set_loading(False)
-        self.output_text.setText(result.get("translation", ""))
+        translation = result.get("translation", "")
+        self.output_text.setText(translation)
+        self.current_sentence_translation = translation  # Store the sentence translation
         
         src_data = result.get("source_analysis", {})
         self.left_analysis.update_data(src_data, is_source=True)
 
         tgt_data = result.get("target_analysis", {})
         self.right_analysis.update_data(tgt_data, is_source=False)
+        
+        # Hide restore button since we have the sentence showing
+        self.btn_restore_sentence.hide()
 
     def analyze_selected_word_bilingual(self):
         """
@@ -486,12 +520,12 @@ class GeminiTranslatorApp(QMainWindow):
         source_data = result.get("source_analysis", {})
         # Get target analysis data
         target_data = result.get("target_analysis", {})
-        # Get translation
-        translation = result.get("translation", target_data.get("translation", ""))
+        # Get word translation (not sentence translation)
+        word_translation = result.get("translation", target_data.get("translation", ""))
         
-        # Display translation in output area
-        if translation:
-            self.output_text.setText(translation)
+        # IMPORTANT: Do NOT update the output_text area with word translation
+        # Keep the existing sentence translation there
+        # The sentence translation stays in the output area
         
         # Get current languages
         source_lang = self.combo_source.currentText()
@@ -525,7 +559,7 @@ class GeminiTranslatorApp(QMainWindow):
         # Format the data appropriately based on target language
         if target_lang == "Urdu":
             right_display_data = {
-                "structure": f"ترجمہ: {translation}",
+                "structure": f"لفظ کا ترجمہ: {word_translation}",
                 "grammar": f"قسم کلام: {target_data.get('part_of_speech', '-')}",
                 "synonyms": target_data.get("synonyms", []),
                 "antonyms": target_data.get("antonyms", []),
@@ -534,7 +568,7 @@ class GeminiTranslatorApp(QMainWindow):
             right_force_language = 'urdu'
         else:
             right_display_data = {
-                "structure": f"Translation: {translation}",
+                "structure": f"Word Translation: {word_translation}",
                 "grammar": f"Part of Speech: {target_data.get('part_of_speech', '-')}",
                 "synonyms": target_data.get("synonyms", []),
                 "antonyms": target_data.get("antonyms", []),
@@ -544,6 +578,27 @@ class GeminiTranslatorApp(QMainWindow):
         
         # Update right panel with forced language
         self.right_analysis.update_data(right_display_data, is_source=False, force_language=right_force_language)
+        
+        # Show restore button if we have a stored sentence translation
+        # and the output area doesn't currently show it
+        if self.current_sentence_translation and not self.output_text.toPlainText():
+            self.btn_restore_sentence.show()
+        elif self.current_sentence_translation and self.output_text.toPlainText() != self.current_sentence_translation:
+            self.btn_restore_sentence.show()
+
+    def restore_sentence_translation(self):
+        """Restore the original sentence translation to output area"""
+        if self.current_sentence_translation:
+            self.output_text.setText(self.current_sentence_translation)
+            self.btn_restore_sentence.hide()
+            
+            # Optional: Update analysis panels back to sentence analysis
+            # You might want to store the sentence analysis data too
+            QMessageBox.information(
+                self, 
+                "Sentence Translation Restored", 
+                "The full sentence translation is now shown in the output area."
+            )
 
     # OLD method - kept for backward compatibility
     def analyze_selected_word(self):
