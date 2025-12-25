@@ -4,9 +4,10 @@ import pyperclip
 import re
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QHBoxLayout, QTextEdit, QPushButton, QComboBox, 
-                               QLabel, QFrame, QProgressBar, QMessageBox, QScrollArea)
+                               QLabel, QFrame, QProgressBar, QMessageBox, QScrollArea,
+                               QMenu)
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QIcon, QFont
+from PySide6.QtGui import QIcon, QFont, QAction, QContextMenuEvent
 
 # Add the src directory to Python path so we can import from it
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -148,6 +149,83 @@ class AnalysisPanel(QScrollArea):
                 lbl.setFont(QFont("Segoe UI", 10))
 
 
+# --- CUSTOM TEXT EDIT WITH BILINGUAL CONTEXT MENU ---
+class BilingualTextEdit(QTextEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+    def contextMenuEvent(self, event: QContextMenuEvent):
+        menu = QMenu(self)
+        
+        # Create bilingual menu items
+        undo_action = QAction("Undo", self)
+        undo_action.setShortcut("Ctrl+Z")
+        undo_action.triggered.connect(self.undo)
+        menu.addAction(undo_action)
+        
+        redo_action = QAction("Redo", self)
+        redo_action.setShortcut("Ctrl+Y")
+        redo_action.triggered.connect(self.redo)
+        menu.addAction(redo_action)
+        
+        menu.addSeparator()
+        
+        cut_action = QAction("Cut", self)
+        cut_action.setShortcut("Ctrl+X")
+        cut_action.triggered.connect(self.cut)
+        menu.addAction(cut_action)
+        
+        copy_action = QAction("Copy", self)
+        copy_action.setShortcut("Ctrl+C")
+        copy_action.triggered.connect(self.copy)
+        menu.addAction(copy_action)
+        
+        paste_action = QAction("Paste", self)
+        paste_action.setShortcut("Ctrl+V")
+        paste_action.triggered.connect(self.paste)
+        menu.addAction(paste_action)
+        
+        delete_action = QAction("Delete", self)
+        delete_action.setShortcut("Del")
+        delete_action.triggered.connect(lambda: self.textCursor().removeSelectedText())
+        menu.addAction(delete_action)
+        
+        menu.addSeparator()
+        
+        select_all_action = QAction("Select All", self)
+        select_all_action.setShortcut("Ctrl+A")
+        select_all_action.triggered.connect(self.selectAll)
+        menu.addAction(select_all_action)
+        
+        # Apply custom styling to the menu
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #FFFFFF;
+                border: 1px solid #DADCE0;
+                border-radius: 8px;
+                padding: 8px;
+            }
+            QMenu::item {
+                padding: 8px 16px;
+                border-radius: 4px;
+                color: #202124;
+                font-size: 14px;
+                min-width: 200px;
+            }
+            QMenu::item:selected {
+                background-color: #E8F0FE;
+                color: #1A73E8;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #F1F3F4;
+                margin: 4px 0;
+            }
+        """)
+        
+        menu.exec(event.globalPos())
+
+
 # --- MAIN APP ---
 class GeminiTranslatorApp(QMainWindow):
     def __init__(self):
@@ -223,7 +301,7 @@ class GeminiTranslatorApp(QMainWindow):
         input_card_layout = QVBoxLayout(input_card)
         input_card_layout.setContentsMargins(0, 0, 0, 0)
         
-        self.input_text = QTextEdit()
+        self.input_text = BilingualTextEdit()  # Use custom BilingualTextEdit
         self.input_text.setPlaceholderText("Enter text here...")
         self.input_text.setFrameShape(QFrame.NoFrame)
         self.input_text.setStyleSheet("border: none; padding: 15px; font-size: 16px; background-color: transparent;")
@@ -253,7 +331,7 @@ class GeminiTranslatorApp(QMainWindow):
         output_card_layout = QVBoxLayout(output_card)
         output_card_layout.setContentsMargins(0, 0, 0, 0)
         
-        self.output_text = QTextEdit()
+        self.output_text = BilingualTextEdit()  # Use custom BilingualTextEdit
         self.output_text.setPlaceholderText("Translation...")
         self.output_text.setReadOnly(True)
         self.output_text.setFrameShape(QFrame.NoFrame)
@@ -329,11 +407,7 @@ class GeminiTranslatorApp(QMainWindow):
         tgt_txt = self.combo_target.currentText()
         
         self.combo_source.setCurrentText(tgt_txt)
-        
-        if original_source == "Auto Detect":
-            self.combo_target.setCurrentText("English")
-        else:
-            self.combo_target.setCurrentText(original_source)
+        self.combo_target.setCurrentText(original_source)
             
         current_output = self.output_text.toPlainText()
         if current_output:
